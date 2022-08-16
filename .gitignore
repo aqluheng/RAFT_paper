@@ -6,3 +6,8 @@ pytorch_env
 models
 build
 correlation.egg-info
+checkpoints/
+.ipynb_checkpoints/*
+runs/*
+wandb/*
+*.log

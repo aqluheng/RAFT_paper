@@ -22,6 +22,12 @@ import datasets
 from torch.utils.tensorboard import SummaryWriter
 
 try:
+    import wandb
+except:
+    pass
+
+
+try:
     from torch.cuda.amp import GradScaler
 except:
     # dummy GradScaler for PyTorch < 1.6
@@ -84,15 +90,16 @@ def fetch_optimizer(args, model):
         pct_start=0.05, cycle_momentum=False, anneal_strategy='linear')
 
     return optimizer, scheduler
-    
+
 
 class Logger:
-    def __init__(self, model, scheduler):
+    def __init__(self, model, scheduler, args):
         self.model = model
         self.scheduler = scheduler
         self.total_steps = 0
         self.running_loss = {}
         self.writer = None
+        self.args = args
 
     def _print_training_status(self):
         metrics_data = [self.running_loss[k]/SUM_FREQ for k in sorted(self.running_loss.keys())]
@@ -119,6 +126,11 @@ class Logger:
             self.running_loss[key] += metrics[key]
 
         if self.total_steps % SUM_FREQ == SUM_FREQ-1:
+            if self.args.enable_wandb:
+                log_info = {}
+                log_info.update({k: v/SUM_FREQ for k, v in self.running_loss.items()})
+                log_info.update({'lr': float(f'{self.scheduler.get_last_lr()[0]:10.7f}')})
+                wandb.log(log_info, step=self.total_steps)
             self._print_training_status()
             self.running_loss = {}
 
@@ -128,6 +140,9 @@ class Logger:
 
         for key in results:
             self.writer.add_scalar(key, results[key], self.total_steps)
+
+        if self.args.enable_wandb:
+            wandb.log(results, step=self.total_steps)
 
     def close(self):
         self.writer.close()
@@ -152,7 +167,21 @@ def train(args):
 
     total_steps = 0
     scaler = GradScaler(enabled=args.mixed_precision)
-    logger = Logger(model, scheduler)
+    logger = Logger(model, scheduler, args)
+
+    if args.enable_wandb:
+        wandb_id = os.environ.get("NGC_JOB_ID", None)
+        env_id = os.environ.get("WB_ID", None)
+        if env_id is not None:
+            if wandb_id is not None:
+                wandb_id += f'_{env_id}'
+            else:
+                wandb_id = env_id
+        wandb.init(project=os.environ.get('WB_PROJECT', None), id=wandb_id, name=args.name, config=vars(args))
+        wandb.define_metric("final", summary="min")
+        wandb.define_metric("kitti-epe", summary="min")
+        wandb.define_metric("kitti-f1", summary="min")
+        wandb.define_metric("chairs", summary="min")
 
     VAL_FREQ = 5000
     add_noise = True
@@ -162,14 +191,12 @@ def train(args):
 
         for i_batch, data_blob in enumerate(train_loader):
             optimizer.zero_grad()
-            image1, image2, flow, valid = [x.cuda() for x in data_blob]
-
+            images, flow, valid = [x.cuda() for x in data_blob]
             if args.add_noise:
                 stdv = np.random.uniform(0.0, 5.0)
-                image1 = (image1 + stdv * torch.randn(*image1.shape).cuda()).clamp(0.0, 255.0)
-                image2 = (image2 + stdv * torch.randn(*image2.shape).cuda()).clamp(0.0, 255.0)
+                images = (images + stdv * torch.randn(*images.shape).cuda(non_blocking=True)).clamp(0.0, 255.0)
 
-            flow_predictions = model(image1, image2, iters=args.iters)            
+            flow_predictions = model(images, iters=args.iters)                 
 
             loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
             scaler.scale(loss).backward()
@@ -198,7 +225,7 @@ def train(args):
                 logger.write_dict(results)
                 
                 model.train()
-                if args.stage != 'chairs':
+                if args.stage != 'movisubset':
                     model.module.freeze_bn()
             
             total_steps += 1
@@ -236,6 +263,9 @@ if __name__ == '__main__':
     parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--gamma', type=float, default=0.8, help='exponential weighting')
     parser.add_argument('--add_noise', action='store_true')
+    parser.add_argument('--dist', action='store_true')
+    parser.add_argument('--num_workers', type=int, default=7, help='the number of workers each process (default: 7)')
+    parser.add_argument('--enable_wandb', action='store_true', help='enable wandb to trace experiments')
     args = parser.parse_args()
 
     torch.manual_seed(1234)
@@ -245,3 +275,5 @@ if __name__ == '__main__':
         os.mkdir('checkpoints')
 
     train(args)
+    if args.enable_wandb:
+        wandb.finish()
