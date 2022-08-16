@@ -390,6 +390,7 @@ def fetch_dataloader(args, TRAIN_DS=''):
     """ Create the data loader for the corresponding trainign set """
 
     if args.stage == 'chairs':
+        args.image_size = [368,496]
         aug_params = {'crop_size': args.image_size, 'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True}
         train_dataset = FlyingChairs(aug_params, split='training')
     
@@ -457,7 +458,7 @@ def fetch_dataloader(args, TRAIN_DS=''):
             train_dataset = vkitti + things
         elif TRAIN_DS == '':
             train_dataset = vkitti
-    elif args.stage == 'movisubset':
+    elif args.startswith("movi"):
         aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False}
         movisubset = moviSubset(aug_params)
         train_dataset = movisubset

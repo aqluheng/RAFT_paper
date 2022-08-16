@@ -131,7 +131,7 @@ def validate_sintel(model, iters=32, verbose=False, root='/result', output_dir='
         px3 = np.mean(epe_all<3)
         px5 = np.mean(epe_all<5)
 
-        print("Validation sintel (%s) EPE: %f, 1px: %f, 3px: %f, 5px: %f" % (dstype, epe, px1, px3, px5))
+        print("Validation sintel (%s) EPE: %f, 1px: %f, 3px: %f, 5px: %f, >3px: %f" % (dstype, epe, px1, px3, px5, (1-px3)*100))
         results[dstype] = np.mean(epe_list)
 
     return results
