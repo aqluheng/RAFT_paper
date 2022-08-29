@@ -17,16 +17,9 @@ from utils import frame_utils
 from utils.augmentor import FlowAugmentor, SparseFlowAugmentor
 
 
+# +
 class FlowDataset(data.Dataset):
-    def __init__(
-        self,
-        aug_params=None,
-        sparse=False,
-        preload=False,
-        ret_extra_info=False,
-        kitti_fmt=False,
-        useAutoFlowAug=False,
-    ):
+    def __init__(self, aug_params=None, sparse=False, preload=False, ret_extra_info=False, kitti_fmt=False, useAutoFlowAug=False):
         self.augmentor = None
         self.sparse = sparse
         if aug_params is not None:
@@ -34,8 +27,7 @@ class FlowDataset(data.Dataset):
                 self.augmentor = SparseFlowAugmentor(**aug_params)
             else:
                 if useAutoFlowAug:
-                    from utils.RAFT_augmentation import raftAugment
-
+                    from utils.RAFT_augmentation import raftAugment                    
                     self.augmentor = raftAugment(**aug_params)
                 else:
                     self.augmentor = FlowAugmentor(**aug_params)
@@ -49,10 +41,10 @@ class FlowDataset(data.Dataset):
         self.ret_extra_info = ret_extra_info
         self.kitti_fmt = kitti_fmt
         self.useAutoFlowAug = useAutoFlowAug
-
+        
     def __getitem__(self, index):
-        #         from time import time
-        #         lastTime = time()
+#         from time import time
+#         lastTime = time()
         if self.is_test:
             img1 = frame_utils.read_gen(self.image_list[index][0])
             img2 = frame_utils.read_gen(self.image_list[index][1])
@@ -75,10 +67,8 @@ class FlowDataset(data.Dataset):
         if not self.preload:
             if self.sparse:
                 # TODO: switch different flow reading functions in another way
-                if "VirtualKITTI2" in self.flow_list[index]:
-                    flow, valid = frame_utils.read_vkitti_png_flow(
-                        self.flow_list[index]
-                    )
+                if 'VirtualKITTI2' in self.flow_list[index]:
+                    flow, valid = frame_utils.read_vkitti_png_flow(self.flow_list[index])
                 else:
                     flow, valid = frame_utils.readFlowKITTI(self.flow_list[index])
             else:
@@ -93,7 +83,7 @@ class FlowDataset(data.Dataset):
             flow, valid = self.flow_list[index]
             img1, ref_img = self.image_list[index]
             if isinstance(ref_img, int):
-                img2 = self.image_list[index + 1][0]
+                img2 = self.image_list[index+1][0]
             else:
                 img2 = ref_img
         flow = np.array(flow).astype(np.float32)
@@ -102,8 +92,8 @@ class FlowDataset(data.Dataset):
 
         # grayscale images
         if len(img1.shape) == 2:
-            img1 = np.tile(img1[..., None], (1, 1, 3))
-            img2 = np.tile(img2[..., None], (1, 1, 3))
+            img1 = np.tile(img1[...,None], (1, 1, 3))
+            img2 = np.tile(img2[...,None], (1, 1, 3))
         else:
             img1 = img1[..., :3]
             img2 = img2[..., :3]
@@ -113,21 +103,19 @@ class FlowDataset(data.Dataset):
                 img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
             else:
                 if self.useAutoFlowAug:
-                    #                     images =  tf.convert_to_tensor([img1.astype("float32"),img2.astype("float32")])/255.0
-                    #                     flow = tf.convert_to_tensor(flow.astype("float32"))
+#                     images =  tf.convert_to_tensor([img1.astype("float32"),img2.astype("float32")])/255.0
+#                     flow = tf.convert_to_tensor(flow.astype("float32"))
                     images = np.stack((img1, img2)).astype("float32") / 255.0
                     flow = flow.astype("float32")
                     images, flow = self.augmentor(images, flow)
-                    img1, img2 = images[0].numpy().astype("float32"), images[
-                        1
-                    ].numpy().astype("float32")
+                    img1, img2 = images[0].numpy().astype("float32"), images[1].numpy().astype("float32")
                     flow = flow.numpy().astype("float32")
-                    img1 = np.uint8((img1 + 1) * 255)
-                    img2 = np.uint8((img2 + 1) * 255)
+                    img1 = np.uint8((img1+1)*255)
+                    img2 = np.uint8((img2+1)*255)
                 else:
                     img1, img2, flow = self.augmentor(img1, img2, flow)
-
-        #         print(img1.min(),img1.max())
+        
+#         print(img1.min(),img1.max())
         img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
         img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
         flow = torch.from_numpy(flow).permute(2, 0, 1).float()[:2]
@@ -137,29 +125,27 @@ class FlowDataset(data.Dataset):
         else:
             valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
 
-        # img1 = img1[None,:,:,:]
-        # img2 = img2[None,:,:,:]
-        #         print("time in getitem", time()-lastTime)
+        #img1 = img1[None,:,:,:]
+        #img2 = img2[None,:,:,:]
+#         print("time in getitem", time()-lastTime)
 
         if self.ret_extra_info:
-            return (
-                torch.cat((img1[None], img2[None]), dim=0),
-                flow,
-                valid.float(),
-                self.extra_info[index],
-            )
+            return torch.cat((img1[None], img2[None]), dim=0), flow, valid.float(), self.extra_info[index]
         else:
             return torch.cat((img1[None], img2[None]), dim=0), flow, valid.float()
 
+
     def __rmul__(self, v):
-        assert not self.preload
+        assert(not self.preload)
         self.flow_list = v * self.flow_list
         self.image_list = v * self.image_list
         return self
-
+        
     def __len__(self):
         return len(self.image_list)
 
+
+# -
 
 class MpiSintel(FlowDataset):
     def __init__(self, aug_params=None, split='training', root='/dataset/MPI-Sintel', dstype='clean', ret_extra_info=False):

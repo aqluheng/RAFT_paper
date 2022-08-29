@@ -11,3 +11,4 @@ checkpoints/
 runs/*
 wandb/*
 *.log
+dataLog/

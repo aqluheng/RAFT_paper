@@ -177,8 +177,9 @@ def train(args):
                 wandb_id += f'_{env_id}'
             else:
                 wandb_id = env_id
-        wandb.init(project=os.environ.get('WB_PROJECT', None), id=wandb_id, name=args.name, config=vars(args))
+        wandb.init(project=os.environ.get('WB_PROJECT', None), id=wandb_id+args.name, name=args.name, config=vars(args))
         wandb.define_metric("final", summary="min")
+        wandb.define_metric("final-epe", summary="min")
         wandb.define_metric("kitti-epe", summary="min")
         wandb.define_metric("kitti-f1", summary="min")
         wandb.define_metric("chairs", summary="min")
@@ -225,7 +226,7 @@ def train(args):
                 logger.write_dict(results)
                 
                 model.train()
-                if args.stage != 'movisubset':
+                if not args.stage.startswith('movi'):
                     model.module.freeze_bn()
             
             total_steps += 1
@@ -266,6 +267,7 @@ if __name__ == '__main__':
     parser.add_argument('--dist', action='store_true')
     parser.add_argument('--num_workers', type=int, default=7, help='the number of workers each process (default: 7)')
     parser.add_argument('--enable_wandb', action='store_true', help='enable wandb to trace experiments')
+    parser.add_argument('--aug_setting', type=str, required=True, help="augmentation [kittiAug, chairsAug, autoflowAug]")
     args = parser.parse_args()
 
     torch.manual_seed(1234)
